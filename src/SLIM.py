@@ -1,12 +1,16 @@
 import time
+import warnings
 import pandas as pd
 from pathlib import Path
-from scipy.sparse import csr_matrix
-from implicit.als import AlternatingLeastSquares
+from scipy.sparse import csr_matrix, lil_matrix
+from sklearn.linear_model import ElasticNet
+from sklearn.exceptions import ConvergenceWarning
 
 
 def main():
-    print("ALSALSALSALSALSALSALSALSALSALSALS")
+    print("SLIMSLIMSLIMSLIMSLIMSLIMSLIM")
+
+    warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
     start_time = time.time()
 
@@ -16,22 +20,25 @@ def main():
     info_file = project_root / "data" / "filtered_2019-Nov.csv"
 
     print("\n==============================")
-    print("1. ЗАГРУЗКА ОСНОВНОЙ ТАБЛИЦЫ")
+    print("1. ЗАГРУЗКА ДАННЫХ ДЛЯ SLIM")
     print("==============================")
+
+
+
+
+
+
+
+
+
 
     df = pd.read_csv(data_path)
 
     print("\nРазмер таблицы matrix_2019-Nov.csv:")
     print(df.shape)
 
-    print("\nНазвания столбцов:")
-    print(df.columns.tolist())
-
-    print("\nПервые 10 строк основной таблицы:")
+    print("\nПервые 10 строк:")
     print(df.head(10).to_string(index=False))
-
-    print("\nПроверка пропусков в основной таблице:")
-    print(df.isna().sum())
 
     print("\n==============================")
     print("2. ЗАГРУЗКА ИНФОРМАЦИИ О ТОВАРАХ")
@@ -45,36 +52,49 @@ def main():
     print("\nРазмер таблицы filtered_2019-Nov.csv до удаления дублей:")
     print(info_df.shape)
 
-    print("\nПервые 10 строк информации о товарах:")
-    print(info_df.head(10).to_string(index=False))
-
     info_df = info_df.drop_duplicates(subset=["product_id"])
 
     print("\nРазмер таблицы с информацией о товарах после удаления дублей:")
     print(info_df.shape)
 
     print("\n==============================")
-    print("3. ОГРАНИЧЕНИЕ КОЛИЧЕСТВА ПОЛЬЗОВАТЕЛЕЙ")
+    print("3. ОГРАНИЧЕНИЕ ДАННЫХ ДЛЯ SLIM")
     print("==============================")
 
-    users_count = 150000
+    users_count = 25000
+    popular_items_count = 1500
 
     first_users = df["user_id"].drop_duplicates().head(users_count)
     new_df = df[df["user_id"].isin(first_users)].copy()
 
-    print("\nСколько пользователей берем для обучения:")
+    popular_items = (
+        new_df.groupby("product_id")["interaction_weight"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(popular_items_count)
+        .index
+    )
+
+    new_df = new_df[new_df["product_id"].isin(popular_items)].copy()
+
+    print("\nСколько пользователей берем для SLIM:")
     print(users_count)
 
-    print("\nРазмер таблицы после ограничения пользователей:")
+    print("\nСколько популярных товаров берем для SLIM:")
+    print(popular_items_count)
+
+
+
+    print("\nРазмер таблицы после ограничения:")
     print(new_df.shape)
 
-    print("\nКоличество уникальных пользователей после ограничения:")
+    print("\nКоличество уникальных пользователей:")
     print(new_df["user_id"].nunique())
 
-    print("\nКоличество уникальных товаров после ограничения:")
+    print("\nКоличество уникальных товаров:")
     print(new_df["product_id"].nunique())
 
-    print("\nПервые 10 строк таблицы после ограничения пользователей:")
+    print("\nПервые 10 строк после ограничения:")
     print(new_df.head(10).to_string(index=False))
 
     print("\n==============================")
@@ -84,21 +104,18 @@ def main():
     new_users = new_df["user_id"].unique()
     new_items = new_df["product_id"].unique()
 
+    user_map = {user_id: index for index, user_id in enumerate(new_users)}
+    item_map = {product_id: index for index, product_id in enumerate(new_items)}
+    reverse_item_map = {index: product_id for product_id, index in item_map.items()}
+
+    new_df["user_index"] = new_df["user_id"].map(user_map)
+    new_df["item_index"] = new_df["product_id"].map(item_map)
+
     print("\nКоличество пользователей для модели:")
     print(len(new_users))
 
     print("\nКоличество товаров для модели:")
     print(len(new_items))
-
-    user_map = {user_id: index for index, user_id in enumerate(new_users)}
-    item_map = {product_id: index for index, product_id in enumerate(new_items)}
-    reverse_item_map = {index: product_id for product_id, index in item_map.items()}
-
-
-
-
-    new_df["user_index"] = new_df["user_id"].map(user_map)
-    new_df["item_index"] = new_df["product_id"].map(item_map)
 
     print("\nТаблица после добавления user_index и item_index:")
     print(
@@ -107,20 +124,12 @@ def main():
         ].head(10).to_string(index=False)
     )
 
-    print("\nПример user_map: реальный user_id -> внутренний user_index")
-    print(list(user_map.items())[:5])
-
-    print("\nПример item_map: реальный product_id -> внутренний item_index")
-    print(list(item_map.items())[:5])
-
     print("\n==============================")
-    print("5. TRAIN/TEST SPLIT ДЛЯ ОЦЕНКИ ALS")
+    print("5. TRAIN/TEST SPLIT ДЛЯ ОЦЕНКИ SLIM")
     print("==============================")
 
-    evaluation_users_count = 2000
+    evaluation_users_count = 200
 
-    print("\nСколько пользователей берем для оценки качества:")
-    print(evaluation_users_count)
 
     user_products_count = new_df.groupby("user_id")["product_id"].nunique()
 
@@ -129,11 +138,14 @@ def main():
     ].index[:evaluation_users_count]
 
 
+
+
+
+
+
     evaluation_df = new_df[
         new_df["user_id"].isin(users_for_evaluation)
     ].copy()
-
-
 
     test_df = evaluation_df.groupby(
         "user_id",
@@ -141,6 +153,9 @@ def main():
     ).sample(n=1, random_state=42)
 
     train_df = new_df.drop(test_df.index).copy()
+
+    print("\nСколько пользователей берем для оценки качества SLIM:")
+    print(evaluation_users_count)
 
     print("\nРазмер train_df:")
     print(train_df.shape)
@@ -163,19 +178,18 @@ def main():
     )
 
     print("\nПояснение:")
-    print("train_df — данные, на которых модель будет обучаться.")
-    print("test_df — товары, которые мы временно спрятали от модели для проверки.")
+    print("train_df — данные, на которых обучается SLIM.")
+    print("test_df — товары, которые мы спрятали для проверки качества.")
 
     print("\n==============================")
-    print("6. СОЗДАНИЕ SPARSE MATRIX ДЛЯ ОБУЧЕНИЯ")
+    print("6. СОЗДАНИЕ USER-ITEM MATRIX ДЛЯ ОБУЧЕНИЯ")
     print("==============================")
 
-    values = train_df["interaction_weight"]
-    rows = train_df["user_index"]
-    cols = train_df["item_index"]
-
     train_matrix = csr_matrix(
-        (values, (rows, cols)),
+        (
+            train_df["interaction_weight"],
+            (train_df["user_index"], train_df["item_index"])
+        ),
         shape=(len(new_users), len(new_items))
     )
 
@@ -184,27 +198,58 @@ def main():
     print("Количество ненулевых значений:", train_matrix.nnz)
 
     print("\n==============================")
-    print("7. ОБУЧЕНИЕ МОДЕЛИ ALS")
+    print("7. ОБУЧЕНИЕ МОДЕЛИ SLIM")
     print("==============================")
 
-    model = AlternatingLeastSquares(
-        factors=40,
-        regularization=0.1,
-        iterations=20
+    items_count = train_matrix.shape[1]
+
+    similarity_matrix = lil_matrix((items_count, items_count))
+
+    slim_model = ElasticNet(
+        alpha=0.01,
+        l1_ratio=0.1,
+        positive=True,
+        fit_intercept=False,
+        max_iter=200,
+        random_state=42
     )
 
-    print("\nПараметры модели:")
-    print("factors = 40")
-    print("regularization = 0.1")
-    print("iterations = 20")
+    print("\nПараметры SLIM:")
+    print("alpha = 0.01")
+    print("l1_ratio = 0.1")
+    print("positive = True")
+    print("max_iter = 120")
 
-    print("\nНачинаем обучение модели:")
-    model.fit(train_matrix)
+    print("\nНачинаем обучение SLIM.")
+    print("Модель будет по очереди обучаться для каждого товара.")
+    print("Выводим прогресс каждые 100 товаров.")
 
-    print("\nОбучение модели завершено.")
+    for item_index in range(items_count):
+        if item_index % 100 == 0:
+            print("Обработано товаров:", item_index, "из", items_count)
+
+        y = train_matrix[:, item_index].toarray().ravel()
+
+        X = train_matrix.copy().tolil()
+        X[:, item_index] = 0
+        X = X.tocsr()
+
+        slim_model.fit(X, y)
+
+        coefs = slim_model.coef_
+
+        for related_item_index, weight in enumerate(coefs):
+            if weight > 0:
+                similarity_matrix[related_item_index, item_index] = weight
+
+    similarity_matrix = similarity_matrix.tocsr()
+
+    print("\nОбучение SLIM завершено.")
+    print("Размер матрицы похожести товаров:", similarity_matrix.shape)
+    print("Количество ненулевых значений:", similarity_matrix.nnz)
 
     print("\n==============================")
-    print("8. ОЦЕНКА КАЧЕСТВА ALS")
+    print("8. ОЦЕНКА КАЧЕСТВА SLIM")
     print("==============================")
 
     recommendations_count = 10
@@ -212,20 +257,22 @@ def main():
     results = []
 
     for _, row in test_df.iterrows():
-        real_user_id = row["user_id"]
-        hidden_product_id = row["product_id"]
+        real_user_id = int(row["user_id"])
+        hidden_product_id = int(row["product_id"])
         user_index = int(row["user_index"])
 
-        rec_items, scores = model.recommend(
-            user_index,
-            train_matrix[user_index],
-            N=recommendations_count,
-            filter_already_liked_items=True
-        )
+        user_vector = train_matrix[user_index]
+
+        scores = user_vector.dot(similarity_matrix).toarray().ravel()
+
+        user_items = user_vector.indices
+        scores[user_items] = -1
+
+        top_item_indices = scores.argsort()[::-1][:recommendations_count]
 
         recommended_product_ids = [
-            reverse_item_map[int(item_index)]
-            for item_index in rec_items
+            int(reverse_item_map[int(item_index)])
+            for item_index in top_item_indices
         ]
 
         hit = hidden_product_id in recommended_product_ids
@@ -267,14 +314,14 @@ def main():
     print("\nПервые 10 строк результата оценки:")
     print(evaluation_results.head(10).to_string(index=False))
 
-    evaluation_output_file = project_root / "data" / "als_evaluation_2019-Nov.csv"
+    evaluation_output_file = project_root / "data" / "slim_evaluation_2019-Nov.csv"
     evaluation_results.to_csv(evaluation_output_file, index=False)
 
-    print("\nРезультаты оценки ALS сохранены в файл:")
+    print("\nРезультаты оценки SLIM сохранены в файл:")
     print(evaluation_output_file)
 
     print("\n==============================")
-    print("9. ВЫБОР ПОЛЬЗОВАТЕЛЯ ДЛЯ ПРИМЕРА РЕКОМЕНДАЦИЙ")
+    print("9. ВЫБОР ПОЛЬЗОВАТЕЛЯ ДЛЯ РЕКОМЕНДАЦИЙ")
     print("==============================")
 
     user_stats = new_df.groupby("user_id").agg(
@@ -286,7 +333,7 @@ def main():
     print("\nСтатистика по первым 10 пользователям:")
     print(user_stats.head(10).to_string(index=False))
 
-    min_products_count = 10
+    min_products_count = 5
     max_products_count = 50
 
     good_users = user_stats[
@@ -312,9 +359,9 @@ def main():
     user_id = int(real_user_id)
     user_index = user_map[real_user_id]
 
-    print("\nВыбран пользователь для проверки:")
-    print("Реальный user_id:", user_id)
-    print("Внутренний user_index:", user_index)
+    print("\nВыбран пользователь:")
+    print("user_id:", user_id)
+    print("user_index:", user_index)
 
     print("\n==============================")
     print("10. ИСТОРИЯ ВЫБРАННОГО ПОЛЬЗОВАТЕЛЯ")
@@ -343,36 +390,36 @@ def main():
     print("\nПервые 20 товаров из истории пользователя:")
     print(user_history_full.head(20).to_string(index=False))
 
-    history_output_file = project_root / "data" / "als_user_history_2019-Nov.csv"
+    history_output_file = project_root / "data" / "slim_user_history_2019-Nov.csv"
     user_history_full.to_csv(history_output_file, index=False)
 
-    print("\nПолная история выбранного пользователя сохранена в файл:")
+    print("\nИстория пользователя сохранена в файл:")
     print(history_output_file)
 
     print("\n==============================")
-    print("11. ПОЛУЧЕНИЕ РЕКОМЕНДАЦИЙ ДЛЯ ПРИМЕРА")
+    print("11. ПОЛУЧЕНИЕ РЕКОМЕНДАЦИЙ SLIM")
     print("==============================")
 
-    rec_items, scores = model.recommend(
-        user_index,
-        train_matrix[user_index],
-        N=recommendations_count,
-        filter_already_liked_items=True
-    )
+    user_vector = train_matrix[user_index]
 
-    real_product_ids = [
-        reverse_item_map[int(item_index)]
-        for item_index in rec_items
-    ]
+    scores = user_vector.dot(similarity_matrix).toarray().ravel()
+
+    user_items = user_vector.indices
+    scores[user_items] = -1
+
+    top_item_indices = scores.argsort()[::-1][:recommendations_count]
 
     rec_table = pd.DataFrame({
-        "item_index": rec_items,
-        "score": scores,
-        "product_id": real_product_ids
+        "item_index": top_item_indices,
+        "score": scores[top_item_indices]
     })
 
+    rec_table["product_id"] = rec_table["item_index"].apply(
+        lambda item_index: reverse_item_map[int(item_index)]
+    )
+
     print("\nТаблица рекомендаций до добавления описания товаров:")
-    print(rec_table.head(10).to_string(index=False))
+    print(rec_table.to_string(index=False))
 
     rec_table_full = rec_table.merge(
         info_df,
@@ -382,13 +429,13 @@ def main():
 
     rec_table_full.insert(0, "user_id", user_id)
 
-    print("\nРекомендации с category_code и brand:")
-    print(rec_table_full.head(10).to_string(index=False))
+    print("\nРекомендации SLIM с category_code и brand:")
+    print(rec_table_full.to_string(index=False))
 
-    output_file = project_root / "data" / "als_recommendations_2019-Nov.csv"
+    output_file = project_root / "data" / "slim_recommendations_2019-Nov.csv"
     rec_table_full.to_csv(output_file, index=False)
 
-    print("\nРекомендации сохранены в файл:")
+    print("\nРекомендации SLIM сохранены в файл:")
     print(output_file)
 
     print("\n==============================")

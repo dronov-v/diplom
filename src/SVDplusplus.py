@@ -1,12 +1,24 @@
 import time
 import pandas as pd
 from pathlib import Path
-from scipy.sparse import csr_matrix
-from implicit.als import AlternatingLeastSquares
+from surprise import Dataset, Reader, SVDpp
+
+
+def convert_weight_to_rating(weight):
+    if weight <= 1:
+        return 1
+    elif weight <= 2:
+        return 2
+    elif weight <= 5:
+        return 3
+    elif weight <= 10:
+        return 4
+    else:
+        return 5
 
 
 def main():
-    print("ALSALSALSALSALSALSALSALSALSALSALS")
+    print("SVDPPSVDPPSVDPPSVDPPSVDPP")
 
     start_time = time.time()
 
@@ -15,8 +27,10 @@ def main():
     data_path = project_root / "data" / "matrix_2019-Nov.csv"
     info_file = project_root / "data" / "filtered_2019-Nov.csv"
 
+
+
     print("\n==============================")
-    print("1. ЗАГРУЗКА ОСНОВНОЙ ТАБЛИЦЫ")
+    print("1. ЗАГРУЗКА ДАННЫХ ДЛЯ SVD++")
     print("==============================")
 
     df = pd.read_csv(data_path)
@@ -24,14 +38,8 @@ def main():
     print("\nРазмер таблицы matrix_2019-Nov.csv:")
     print(df.shape)
 
-    print("\nНазвания столбцов:")
-    print(df.columns.tolist())
-
-    print("\nПервые 10 строк основной таблицы:")
+    print("\nПервые 10 строк:")
     print(df.head(10).to_string(index=False))
-
-    print("\nПроверка пропусков в основной таблице:")
-    print(df.isna().sum())
 
     print("\n==============================")
     print("2. ЗАГРУЗКА ИНФОРМАЦИИ О ТОВАРАХ")
@@ -45,9 +53,6 @@ def main():
     print("\nРазмер таблицы filtered_2019-Nov.csv до удаления дублей:")
     print(info_df.shape)
 
-    print("\nПервые 10 строк информации о товарах:")
-    print(info_df.head(10).to_string(index=False))
-
     info_df = info_df.drop_duplicates(subset=["product_id"])
 
     print("\nРазмер таблицы с информацией о товарах после удаления дублей:")
@@ -57,83 +62,67 @@ def main():
     print("3. ОГРАНИЧЕНИЕ КОЛИЧЕСТВА ПОЛЬЗОВАТЕЛЕЙ")
     print("==============================")
 
-    users_count = 150000
+
+    users_count = 25000
 
     first_users = df["user_id"].drop_duplicates().head(users_count)
     new_df = df[df["user_id"].isin(first_users)].copy()
 
-    print("\nСколько пользователей берем для обучения:")
+    print("\nСколько пользователей берем для SVD++:")
     print(users_count)
 
     print("\nРазмер таблицы после ограничения пользователей:")
     print(new_df.shape)
 
-    print("\nКоличество уникальных пользователей после ограничения:")
+    print("\nКоличество уникальных пользователей:")
     print(new_df["user_id"].nunique())
 
-    print("\nКоличество уникальных товаров после ограничения:")
+    print("\nКоличество уникальных товаров:")
     print(new_df["product_id"].nunique())
 
-    print("\nПервые 10 строк таблицы после ограничения пользователей:")
+    print("\nПервые 10 строк после ограничения:")
     print(new_df.head(10).to_string(index=False))
 
     print("\n==============================")
-    print("4. СОЗДАНИЕ ВНУТРЕННИХ ИНДЕКСОВ")
+    print("4. ПРЕОБРАЗОВАНИЕ interaction_weight В rating")
     print("==============================")
 
-    new_users = new_df["user_id"].unique()
-    new_items = new_df["product_id"].unique()
+    new_df["rating"] = new_df["interaction_weight"].apply(convert_weight_to_rating)
 
-    print("\nКоличество пользователей для модели:")
-    print(len(new_users))
-
-    print("\nКоличество товаров для модели:")
-    print(len(new_items))
-
-    user_map = {user_id: index for index, user_id in enumerate(new_users)}
-    item_map = {product_id: index for index, product_id in enumerate(new_items)}
-    reverse_item_map = {index: product_id for product_id, index in item_map.items()}
-
-
-
-
-    new_df["user_index"] = new_df["user_id"].map(user_map)
-    new_df["item_index"] = new_df["product_id"].map(item_map)
-
-    print("\nТаблица после добавления user_index и item_index:")
+    print("\nПервые 20 строк после добавления rating:")
     print(
         new_df[
-            ["user_id", "user_index", "product_id", "item_index", "interaction_weight"]
-        ].head(10).to_string(index=False)
+            ["user_id", "product_id", "interaction_weight", "rating"]
+        ].head(20).to_string(index=False)
     )
 
-    print("\nПример user_map: реальный user_id -> внутренний user_index")
-    print(list(user_map.items())[:5])
+    print("\nРаспределение условных оценок rating:")
+    print(new_df["rating"].value_counts().sort_index().to_string())
 
-    print("\nПример item_map: реальный product_id -> внутренний item_index")
-    print(list(item_map.items())[:5])
+    print("\nПояснение:")
+    print("SVD++ работает с оценками.")
+    print("Так как настоящих оценок в датасете нет, мы используем условную оценку интереса.")
+    print("Она построена на основе interaction_weight.")
 
     print("\n==============================")
-    print("5. TRAIN/TEST SPLIT ДЛЯ ОЦЕНКИ ALS")
+    print("5. TRAIN/TEST SPLIT ДЛЯ ОЦЕНКИ SVD++")
     print("==============================")
 
-    evaluation_users_count = 2000
+    evaluation_users_count = 200
 
-    print("\nСколько пользователей берем для оценки качества:")
+    print("\nСколько пользователей берем для оценки качества SVD++:")
     print(evaluation_users_count)
 
     user_products_count = new_df.groupby("user_id")["product_id"].nunique()
+
 
     users_for_evaluation = user_products_count[
         user_products_count >= 2
     ].index[:evaluation_users_count]
 
-
     evaluation_df = new_df[
         new_df["user_id"].isin(users_for_evaluation)
     ].copy()
-
-
 
     test_df = evaluation_df.groupby(
         "user_id",
@@ -151,82 +140,131 @@ def main():
     print("\nПервые 10 строк train_df:")
     print(
         train_df[
-            ["user_id", "product_id", "interaction_weight", "user_index", "item_index"]
+            ["user_id", "product_id", "interaction_weight", "rating"]
         ].head(10).to_string(index=False)
     )
 
     print("\nПервые 10 спрятанных товаров test_df:")
     print(
         test_df[
-            ["user_id", "product_id", "interaction_weight", "user_index", "item_index"]
+            ["user_id", "product_id", "interaction_weight", "rating"]
         ].head(10).to_string(index=False)
     )
 
     print("\nПояснение:")
-    print("train_df — данные, на которых модель будет обучаться.")
-    print("test_df — товары, которые мы временно спрятали от модели для проверки.")
+    print("train_df — данные, на которых обучается SVD++.")
+    print("test_df — товары, которые мы спрятали для проверки качества.")
+
+
+
+
 
     print("\n==============================")
-    print("6. СОЗДАНИЕ SPARSE MATRIX ДЛЯ ОБУЧЕНИЯ")
+    print("6. ПОДГОТОВКА ДАННЫХ ДЛЯ БИБЛИОТЕКИ SURPRISE")
     print("==============================")
 
-    values = train_df["interaction_weight"]
-    rows = train_df["user_index"]
-    cols = train_df["item_index"]
+    svd_df = train_df[["user_id", "product_id", "rating"]].copy()
 
-    train_matrix = csr_matrix(
-        (values, (rows, cols)),
-        shape=(len(new_users), len(new_items))
+    svd_df["user_id"] = svd_df["user_id"].astype(str)
+    svd_df["product_id"] = svd_df["product_id"].astype(str)
+
+    reader = Reader(rating_scale=(1, 5))
+
+    data = Dataset.load_from_df(
+        svd_df[["user_id", "product_id", "rating"]],
+        reader
     )
 
-    print("\nМатрица train_matrix создана.")
-    print("Размер матрицы:", train_matrix.shape)
-    print("Количество ненулевых значений:", train_matrix.nnz)
+    trainset = data.build_full_trainset()
+
+    print("\nДанные для SVD++ подготовлены.")
+    print("Количество пользователей в trainset:", trainset.n_users)
+    print("Количество товаров в trainset:", trainset.n_items)
+    print("Количество оценок в trainset:", trainset.n_ratings)
 
     print("\n==============================")
-    print("7. ОБУЧЕНИЕ МОДЕЛИ ALS")
+    print("7. ОБУЧЕНИЕ МОДЕЛИ SVD++")
     print("==============================")
 
-    model = AlternatingLeastSquares(
-        factors=40,
-        regularization=0.1,
-        iterations=20
-    )
+    model = SVDpp(
+    n_factors=50,
+    n_epochs=20,
+    random_state=42,
+    verbose=True,
+    cache_ratings=True
+)
 
     print("\nПараметры модели:")
-    print("factors = 40")
-    print("regularization = 0.1")
-    print("iterations = 20")
+    print("n_factors = 50")
+    print("n_epochs = 20")
+    print("random_state = 42")
+    print("cache_ratings = True")
 
-    print("\nНачинаем обучение модели:")
-    model.fit(train_matrix)
+    print("\nНачинаем обучение SVD++:")
+    model.fit(trainset)
 
-    print("\nОбучение модели завершено.")
+    print("\nОбучение SVD++ завершено.")
 
     print("\n==============================")
-    print("8. ОЦЕНКА КАЧЕСТВА ALS")
+    print("8. ОЦЕНКА КАЧЕСТВА SVD++")
     print("==============================")
 
     recommendations_count = 10
+    candidate_limit = 5000
+
+    print("\nКоличество рекомендаций для проверки:")
+    print(recommendations_count)
+
+    print("\nКоличество популярных товаров-кандидатов:")
+    print(candidate_limit)
+
+    popular_candidates = train_df.groupby("product_id")["interaction_weight"].sum()
+    popular_candidates = popular_candidates.sort_values(ascending=False)
+    popular_candidates = popular_candidates.head(candidate_limit).index.tolist()
+
+    train_user_history = train_df.groupby("user_id")["product_id"].apply(set).to_dict()
 
     results = []
 
     for _, row in test_df.iterrows():
-        real_user_id = row["user_id"]
-        hidden_product_id = row["product_id"]
-        user_index = int(row["user_index"])
+        real_user_id = int(row["user_id"])
+        hidden_product_id = int(row["product_id"])
 
-        rec_items, scores = model.recommend(
-            user_index,
-            train_matrix[user_index],
-            N=recommendations_count,
-            filter_already_liked_items=True
-        )
+        user_train_products = train_user_history.get(real_user_id, set())
 
-        recommended_product_ids = [
-            reverse_item_map[int(item_index)]
-            for item_index in rec_items
+        candidate_products = [
+            int(product_id)
+            for product_id in popular_candidates
+            if product_id not in user_train_products
         ]
+
+        if hidden_product_id not in candidate_products:
+            candidate_products.append(hidden_product_id)
+
+        predictions = []
+
+        for product_id in candidate_products:
+            prediction = model.predict(
+                str(real_user_id),
+                str(product_id)
+            )
+
+            predictions.append({
+                "product_id": product_id,
+                "score": prediction.est
+            })
+
+
+
+
+        predictions_df = pd.DataFrame(predictions)
+
+        recommendations = predictions_df.sort_values(
+            by="score",
+            ascending=False
+        ).head(recommendations_count)
+
+        recommended_product_ids = recommendations["product_id"].tolist()
 
         hit = hidden_product_id in recommended_product_ids
 
@@ -255,6 +293,9 @@ def main():
     print("\nКоличество проверенных пользователей:")
     print(len(evaluation_results))
 
+
+
+
     print("\nКоличество попаданий в топ-10:")
     print(hits_count)
 
@@ -267,14 +308,14 @@ def main():
     print("\nПервые 10 строк результата оценки:")
     print(evaluation_results.head(10).to_string(index=False))
 
-    evaluation_output_file = project_root / "data" / "als_evaluation_2019-Nov.csv"
+    evaluation_output_file = project_root / "data" / "svdpp_evaluation_2019-Nov.csv"
     evaluation_results.to_csv(evaluation_output_file, index=False)
 
-    print("\nРезультаты оценки ALS сохранены в файл:")
+    print("\nРезультаты оценки SVD++ сохранены в файл:")
     print(evaluation_output_file)
 
     print("\n==============================")
-    print("9. ВЫБОР ПОЛЬЗОВАТЕЛЯ ДЛЯ ПРИМЕРА РЕКОМЕНДАЦИЙ")
+    print("9. ВЫБОР ПОЛЬЗОВАТЕЛЯ ДЛЯ РЕКОМЕНДАЦИЙ")
     print("==============================")
 
     user_stats = new_df.groupby("user_id").agg(
@@ -305,16 +346,20 @@ def main():
     if len(good_users) == 0:
         print("\nНе найдено пользователей с подходящим количеством товаров.")
         print("Для проверки берем первого пользователя из таблицы.")
+
         real_user_id = new_df.iloc[0]["user_id"]
+
     else:
+
         real_user_id = good_users.iloc[0]["user_id"]
 
-    user_id = int(real_user_id)
-    user_index = user_map[real_user_id]
 
-    print("\nВыбран пользователь для проверки:")
-    print("Реальный user_id:", user_id)
-    print("Внутренний user_index:", user_index)
+
+
+    user_id = int(real_user_id)
+
+    print("\nВыбран пользователь:")
+    print("user_id:", user_id)
 
     print("\n==============================")
     print("10. ИСТОРИЯ ВЫБРАННОГО ПОЛЬЗОВАТЕЛЯ")
@@ -322,7 +367,7 @@ def main():
 
     user_history = new_df[
         new_df["user_id"] == real_user_id
-    ][["product_id", "interaction_weight"]]
+    ][["product_id", "interaction_weight", "rating"]]
 
     user_history_full = user_history.merge(
         info_df,
@@ -343,36 +388,50 @@ def main():
     print("\nПервые 20 товаров из истории пользователя:")
     print(user_history_full.head(20).to_string(index=False))
 
-    history_output_file = project_root / "data" / "als_user_history_2019-Nov.csv"
+    history_output_file = project_root / "data" / "svdpp_user_history_2019-Nov.csv"
     user_history_full.to_csv(history_output_file, index=False)
 
-    print("\nПолная история выбранного пользователя сохранена в файл:")
+    print("\nИстория пользователя сохранена в файл:")
     print(history_output_file)
 
     print("\n==============================")
-    print("11. ПОЛУЧЕНИЕ РЕКОМЕНДАЦИЙ ДЛЯ ПРИМЕРА")
+    print("11. ПОЛУЧЕНИЕ РЕКОМЕНДАЦИЙ SVD++")
     print("==============================")
 
-    rec_items, scores = model.recommend(
-        user_index,
-        train_matrix[user_index],
-        N=recommendations_count,
-        filter_already_liked_items=True
-    )
+    user_history_products = set(user_history["product_id"].unique())
 
-    real_product_ids = [
-        reverse_item_map[int(item_index)]
-        for item_index in rec_items
-    ]
+    candidate_products = new_df[
+        ~new_df["product_id"].isin(user_history_products)
+    ]["product_id"].drop_duplicates()
 
-    rec_table = pd.DataFrame({
-        "item_index": rec_items,
-        "score": scores,
-        "product_id": real_product_ids
-    })
+    print("\nКоличество товаров-кандидатов для рекомендаций:")
+    print(len(candidate_products))
+
+    predictions = []
+
+    for product_id in candidate_products:
+        prediction = model.predict(
+            str(user_id),
+            str(int(product_id))
+        )
+
+
+
+
+        predictions.append({
+            "product_id": int(product_id),
+            "score": prediction.est
+        })
+
+    rec_table = pd.DataFrame(predictions)
+
+    rec_table = rec_table.sort_values(
+        by="score",
+        ascending=False
+    ).head(recommendations_count)
 
     print("\nТаблица рекомендаций до добавления описания товаров:")
-    print(rec_table.head(10).to_string(index=False))
+    print(rec_table.to_string(index=False))
 
     rec_table_full = rec_table.merge(
         info_df,
@@ -382,13 +441,13 @@ def main():
 
     rec_table_full.insert(0, "user_id", user_id)
 
-    print("\nРекомендации с category_code и brand:")
-    print(rec_table_full.head(10).to_string(index=False))
+    print("\nРекомендации SVD++ с category_code и brand:")
+    print(rec_table_full.to_string(index=False))
 
-    output_file = project_root / "data" / "als_recommendations_2019-Nov.csv"
+    output_file = project_root / "data" / "svdpp_recommendations_2019-Nov.csv"
     rec_table_full.to_csv(output_file, index=False)
 
-    print("\nРекомендации сохранены в файл:")
+    print("\nРекомендации SVD++ сохранены в файл:")
     print(output_file)
 
     print("\n==============================")
