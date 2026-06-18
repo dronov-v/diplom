@@ -1,9 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+
+# Virtual environments
 .venv/
 venv/
 env/
-__pycache__/
-*.pyc
+
+# IDE and OS files
 .idea/
+.vscode/
 Thumbs.db
-data/*.csv
+.DS_Store
+
+# Local data and generated tables
+data/
+*.csv
+*.parquet
+*.pkl
+*.joblib
+
+# Generated reports and temporary office files
+*.doc
+*.docx
+*.ppt
+*.pptx
+~$*
+
+# Keep only final images from results, if they are added explicitly
+results/*
+!results/figures/
+!results/figures/*.png
 

@@ -1,0 +1,7 @@
+pandas
+numpy==1.26.4
+scipy
+scikit-learn
+implicit
+scikit-surprise==1.1.4
+matplotlib
